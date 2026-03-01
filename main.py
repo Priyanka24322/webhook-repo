@@ -22,7 +22,11 @@ def format_timestamp(dt: datetime) -> str:
     """Format datetime to readable string: 1st April 2021 - 9:30 PM UTC"""
     day = dt.day
     suffix = "th" if 11 <= day <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
-    return dt.strftime(f"%-d{suffix} %B %Y - %-I:%M %p UTC")
+    hour = dt.strftime("%I").lstrip("0") or "12"  # removes leading zero on Windows
+    minute = dt.strftime("%M")
+    am_pm = dt.strftime("%p")
+    month_year = dt.strftime("%B %Y")
+    return f"{day}{suffix} {month_year} - {hour}:{minute} {am_pm} UTC"
 
 
 @app.get("/", response_class=HTMLResponse)
