@@ -118,7 +118,4 @@ async def clear_events():
 
 if __name__ == "__main__":
     import uvicorn
-
-    # Run the app with Uvicorn when executed directly.
-    # Adjust host/port or add `reload=True` for development as needed.
     uvicorn.run(app)

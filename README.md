@@ -8,8 +8,9 @@ A FastAPI-based GitHub webhook receiver that captures **Push**, **Pull Request**
 
 ```
 webhook-repo/
-├── app.py               # FastAPI application
+├── main.py              # FastAPI application
 ├── requirements.txt
+├── cloudflared.exe      # Cloudflare tunnel binary (Windows)
 ├── static/
 │   └── index.html       # Frontend UI (polls every 15s)
 └── README.md
@@ -29,19 +30,21 @@ pip install -r requirements.txt
 
 ### 2. Start MongoDB
 
-Make sure MongoDB is running locally:
-```bash
-mongod --dbpath /data/db
+**Option A — Local MongoDB:**
+```powershell
+mongod
 ```
-Or use a MongoDB Atlas URI by setting the environment variable:
-```bash
-export MONGO_URI="mongodb+srv://<user>:<pass>@cluster.mongodb.net/"
+
+**Option B — MongoDB Atlas (recommended):** Create a free cluster at [mongodb.com/atlas](https://www.mongodb.com/atlas), then set the connection string as an environment variable:
+
+```powershell
+$env:MONGO_URI = "mongodb+srv://<user>:<pass>@cluster.mongodb.net/"
 ```
 
 ### 3. Run the FastAPI server
 
-```bash
-uvicorn app:app --host 0.0.0.0 --port 5000 --reload
+```powershell
+uvicorn main:app --host 0.0.0.0 --port 5000 --reload
 ```
 
 The app will be available at `http://localhost:5000`.
@@ -50,13 +53,31 @@ The app will be available at `http://localhost:5000`.
 
 ## Exposing to the Internet (for GitHub Webhooks)
 
-GitHub needs a public URL to send webhooks to. Use **ngrok** during development:
+GitHub needs a public URL to send webhooks to. We use **Cloudflare Tunnel** for this.
 
-```bash
-ngrok http 5000
+### 1. Download Cloudflared
+
+Download the **Windows 64-bit** binary from:
+[developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)
+
+Place `cloudflared.exe` inside your `webhook-repo` folder.
+
+### 2. Start the tunnel
+
+Open a **new PowerShell terminal** and run:
+
+```powershell
+.\cloudflared.exe tunnel --url http://localhost:5000
 ```
 
-Copy the HTTPS URL it gives you (e.g., `https://abc123.ngrok.io`).
+You'll see a public URL like:
+```
+https://funk-encounter3762-hurricane-ministers.trycloudflare.com
+```
+
+Copy this URL — you'll need it for the GitHub webhook configuration.
+
+> **Note:** No account needed for quick tunnels. The URL changes every time you restart cloudflared, so update your GitHub webhook URL accordingly.
 
 ---
 
@@ -65,13 +86,16 @@ Copy the HTTPS URL it gives you (e.g., `https://abc123.ngrok.io`).
 1. Go to your **action-repo** on GitHub
 2. Navigate to **Settings → Webhooks → Add webhook**
 3. Fill in:
-   - **Payload URL**: `https://<your-ngrok-url>/webhook`
+   - **Payload URL**: `https://<your-cloudflare-url>/webhook`
    - **Content type**: `application/json`
-   - **Secret**: *(leave blank for now or add verification)*
+   - **Secret**: *(leave blank)*
+   - **SSL verification**: Disable it
    - **Which events?**: Select **individual events** and check:
      - ✅ Pushes
      - ✅ Pull requests
 4. Click **Add webhook**
+
+GitHub will send a ping request — check **Recent Deliveries** to confirm it shows a green ✅.
 
 ---
 
@@ -88,15 +112,15 @@ Copy the HTTPS URL it gives you (e.g., `https://abc123.ngrok.io`).
 
 ## MongoDB Schema
 
-| Field       | Type             | Details                                              |
-|-------------|------------------|------------------------------------------------------|
-| `_id`       | ObjectId         | MongoDB default ID                                   |
-| `request_id`| string           | Git commit hash (Push) or PR number (PR/Merge)       |
-| `author`    | string           | GitHub username performing the action                |
-| `action`    | string           | Enum: `"PUSH"`, `"PULL_REQUEST"`, `"MERGE"`          |
-| `from_branch`| string          | Source branch (null for Push)                        |
-| `to_branch` | string           | Target branch                                        |
-| `timestamp` | string(datetime) | UTC formatted string, e.g. `1st April 2021 - 9:30 PM UTC` |
+| Field        | Type             | Details                                                    |
+|--------------|------------------|------------------------------------------------------------|
+| `_id`        | ObjectId         | MongoDB default ID                                         |
+| `request_id` | string           | Git commit hash (Push) or PR number (PR/Merge)             |
+| `author`     | string           | GitHub username performing the action                      |
+| `action`     | string           | Enum: `"PUSH"`, `"PULL_REQUEST"`, `"MERGE"`                |
+| `from_branch`| string           | Source branch (null for Push)                              |
+| `to_branch`  | string           | Target branch                                              |
+| `timestamp`  | string(datetime) | UTC formatted string, e.g. `1st April 2021 - 9:30 PM UTC` |
 
 ---
 
@@ -110,8 +134,20 @@ The frontend (`/`) auto-polls `/events` every **15 seconds** and renders:
 
 ---
 
+## Testing Locally (Without GitHub)
+
+To simulate webhook events without pushing to GitHub, run:
+
+```powershell
+python test_webhooks.py
+```
+
+This sends fake Push, Pull Request, and Merge payloads directly to your local server and prints the results.
+
+---
+
 ## action-repo Setup
 
-The `action-repo` is just any regular GitHub repository. No special code is needed there — GitHub sends webhooks automatically based on the webhook configuration above.
+The `action-repo` is just any regular GitHub repository — no special code is needed there. GitHub sends webhooks automatically based on the webhook configuration above.
 
 Simply create a repo named `action-repo`, configure the webhook pointing to your `webhook-repo` endpoint, and start making commits and pull requests.
